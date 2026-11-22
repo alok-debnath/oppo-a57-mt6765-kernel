@@ -86,27 +86,18 @@ jobs:
           [ "$miss" -eq 0 ] || { echo "::error::dangling symlinks remain; vendor overlay layout is wrong"; exit 1; }
           echo "all symlinks resolve"
 
-      - name: Add KernelSU-Next (kprobe hooks; CONFIG_KPROBES=y in defconfig)
+      - name: Add KernelSU-Next (legacy branch — supports non-GKI 4.19; kprobe hooks)
         if: ${{ github.event.inputs.ksu != 'false' }}
         working-directory: src/kernel
         run: |
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          echo "KSU version: $(cd KernelSU-Next 2>/dev/null && git describe --tags 2>/dev/null || echo n/a)"
-
-      - name: Patch KernelSU-Next for Linux 4.19 (pgtable.h moved in 5.8)
-        if: ${{ github.event.inputs.ksu != 'false' }}
-        working-directory: src/kernel
-        run: |
-          # <linux/pgtable.h> exists only on kernels >= 5.8; on 4.19 those defs live in
-          # <asm/pgtable.h>. KSU-Next's `next` branch includes it unconditionally, so guard
-          # every occurrence by kernel version to build on this non-GKI 4.19 tree.
-          patched=0
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            perl -0pi -e 's{\#include <linux/pgtable\.h>}{#include <linux/version.h>\n#if LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0)\n#include <asm/pgtable.h>\n#else\n#include <linux/pgtable.h>\n#endif}g' "$f"
-            echo "guarded pgtable.h in: $f"; patched=$((patched+1))
-          done < <(grep -rl '#include <linux/pgtable.h>' drivers/kernelsu 2>/dev/null || true)
-          echo "files patched: $patched"
+          # Use the `legacy` branch, not the default `dev`. dev targets modern GKI
+          # (5.10+) with an LSM/tracepoint hook model and unguarded 5.8/5.9 APIs
+          # (pgtable.h, path_umount, *_nofault). legacy keeps the classic hook model and
+          # version-guards those APIs (kernel_compat.c, patch_memory.c), so it builds on
+          # this 4.19 tree without hand-patching. setup.sh clones the repo and checks out
+          # the ref we pass.
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy
+          echo "KSU ref: $(cd KernelSU-Next 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null; git -C KernelSU-Next describe --tags 2>/dev/null || echo n/a)"
 
       - name: Apply SUSFS patches (best-effort on non-GKI 4.19)
         if: ${{ github.event.inputs.susfs == 'true' }}

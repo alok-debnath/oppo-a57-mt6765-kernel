@@ -38,7 +38,8 @@ mkdir -p src vnd
 test -f src/kernel/kernel/sched_assist/Kconfig
 test -f src/kernel/drivers/base/kernelFwUpdate/Kconfig
 
-[ -d src/kernel/KernelSU-Next ] || ( cd src/kernel && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next )
+# KSU-Next `legacy` branch supports non-GKI 4.19 (dev targets modern GKI 5.10+).
+[ -d src/kernel/KernelSU-Next ] || ( cd src/kernel && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy )
 
 if [ "$SUSFS" = "true" ]; then
   [ -d susfs ] || git clone --depth 1 -b "$SUSFS_BRANCH" "$SUSFS_REPO" susfs
