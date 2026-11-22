@@ -79,8 +79,14 @@ jobs:
           patch -p1 < 50_add_susfs_in_kernel-4.19.patch || echo "::warning::kernel-side SUSFS patch had failed hunks; see *.rej"
           echo "--- any .rej files:"; find . -name '*.rej' -print || true
 
-      - name: Merge KSU/SUSFS config fragment into defconfig
-        run: cat config/ksu_susfs.config >> kernel/arch/arm64/configs/$DEFCONFIG
+      - name: Merge config fragment into defconfig
+        run: |
+          if [ "${{ github.event.inputs.susfs }}" = "false" ]; then
+            echo "SUSFS off -> KSU-only config"
+            cat config/ksu_only.config >> kernel/arch/arm64/configs/$DEFCONFIG
+          else
+            cat config/ksu_susfs.config >> kernel/arch/arm64/configs/$DEFCONFIG
+          fi
 
       - name: Build
         working-directory: kernel
@@ -93,8 +99,10 @@ jobs:
             LD=aarch64-linux-gnu-ld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
             LLVM_IAS=0"
           make $MAKE_ARGS "$DEFCONFIG"
-          make -j"$(nproc)" $MAKE_ARGS 2>&1 | tee ../build.log
+          set -o pipefail
+          make -j"$(nproc)" $MAKE_ARGS 2>&1 | tee "$GITHUB_WORKSPACE/build.log"; rc=${PIPESTATUS[0]}
           echo "--- outputs:"; ls -l out/arch/arm64/boot/ || true
+          echo "make rc=$rc"; exit $rc
 
       - name: Pack AnyKernel3 zip
         run: |
