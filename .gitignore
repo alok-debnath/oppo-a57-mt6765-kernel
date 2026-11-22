@@ -3,6 +3,8 @@ clang/
 kernel/
 modules/
 vendor/
+src/
+vnd/
 susfs/
 ak3/
 *.tar.gz

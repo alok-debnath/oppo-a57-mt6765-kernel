@@ -8,8 +8,9 @@ set -euo pipefail
 KERNEL_REPO=https://github.com/oppo-source/android_kernel_oppo_mt6765
 KERNEL_BRANCH=oppo/mt6765_t_13.1_oppo_a57_a57s_a77
 # Vendor modules repo (same branch). Top-level is vendor/. The kernel tree's oplus
-# symlinks (kernel/sched_assist -> ../../vendor/oplus/...) resolve to <kernel>/vendor/...,
-# so vendor/ must sit at the kernel repo root.
+# symlinks come in two classes: ../../vendor/... and ../../../../vnd/vendor/... .
+# Nesting the kernel at src/kernel makes both land inside this dir: src/vendor and
+# vnd/vendor, both symlinked to the one real modules/vendor.
 MODULES_REPO=https://github.com/oppo-source/android_kernel_modules_oppo_mt6765
 DEFCONFIG=k65v1_64_bsp_defconfig
 SUSFS_REPO=https://gitlab.com/simonpunk/susfs4ksu.git
@@ -25,32 +26,33 @@ if [ -z "$CLANG_BIN" ]; then
   exit 1
 fi
 
-[ -d kernel ] || git clone --depth 1 -b "$KERNEL_BRANCH" "$KERNEL_REPO" kernel
+mkdir -p src vnd
+[ -d src/kernel ] || git clone --depth 1 -b "$KERNEL_BRANCH" "$KERNEL_REPO" src/kernel
 
-# Overlay vendor modules as a SIBLING of kernel/ so the ~89 oplus symlinks resolve.
-# The links (e.g. kernel/sched_assist -> ../../vendor/oplus/...) resolve one level
-# above the kernel tree root, i.e. to "$HERE/vendor".
-if [ ! -d vendor ]; then
-  [ -d modules ] || git clone --depth 1 -b "$KERNEL_BRANCH" "$MODULES_REPO" modules
-  cp -a modules/vendor ./vendor
-fi
-test -f kernel/kernel/sched_assist/Kconfig
+# Overlay vendor modules. Kernel is nested at src/kernel; both oplus symlink classes
+# (../../vendor and ../../../../vnd/vendor) resolve to src/vendor and vnd/vendor,
+# both pointing at the one real modules/vendor.
+[ -d modules ] || git clone --depth 1 -b "$KERNEL_BRANCH" "$MODULES_REPO" modules
+[ -e src/vendor ] || ln -s "$HERE/modules/vendor" src/vendor
+[ -e vnd/vendor ] || ln -s "$HERE/modules/vendor" vnd/vendor
+test -f src/kernel/kernel/sched_assist/Kconfig
+test -f src/kernel/drivers/base/kernelFwUpdate/Kconfig
 
-[ -d kernel/KernelSU-Next ] || ( cd kernel && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next )
+[ -d src/kernel/KernelSU-Next ] || ( cd src/kernel && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next )
 
 if [ "$SUSFS" = "true" ]; then
   [ -d susfs ] || git clone --depth 1 -b "$SUSFS_BRANCH" "$SUSFS_REPO" susfs
-  cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch kernel/ || true
-  cp -r susfs/kernel_patches/fs/* kernel/fs/ || true
-  cp -r susfs/kernel_patches/include/linux/* kernel/include/linux/ || true
-  ( cd kernel && patch -p1 < 50_add_susfs_in_kernel-4.19.patch || echo "WARN: SUSFS hunks failed; check *.rej" )
-  cat config/ksu_susfs.config >> "kernel/arch/arm64/configs/$DEFCONFIG"
+  cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch src/kernel/ || true
+  cp -r susfs/kernel_patches/fs/* src/kernel/fs/ || true
+  cp -r susfs/kernel_patches/include/linux/* src/kernel/include/linux/ || true
+  ( cd src/kernel && patch -p1 < 50_add_susfs_in_kernel-4.19.patch || echo "WARN: SUSFS hunks failed; check *.rej" )
+  cat config/ksu_susfs.config >> "src/kernel/arch/arm64/configs/$DEFCONFIG"
 else
-  cat config/ksu_only.config >> "kernel/arch/arm64/configs/$DEFCONFIG"
+  cat config/ksu_only.config >> "src/kernel/arch/arm64/configs/$DEFCONFIG"
 fi
 
 export PATH="$CLANG_BIN:$PATH"
-cd kernel
+cd src/kernel
 ARGS="O=out ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LD=aarch64-linux-gnu-ld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip LLVM_IAS=0"
 make $ARGS "$DEFCONFIG"
 make -j"$(nproc)" $ARGS

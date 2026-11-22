@@ -22,12 +22,15 @@ on:
 env:
   KERNEL_REPO: https://github.com/oppo-source/android_kernel_oppo_mt6765
   KERNEL_BRANCH: oppo/mt6765_t_13.1_oppo_a57_a57s_a77
-  # Vendor modules repo (same branch). Its top-level is vendor/. The kernel tree
-  # has ~89 symlinks (git mode 120000) like kernel/sched_assist -> ../../vendor/oplus/...
-  # The link kernel/<tree>/kernel/sched_assist with target ../../vendor/... resolves ONE
-  # level ABOVE the kernel tree root (every link uses depth+1 '..'), so vendor/ must sit
-  # as a SIBLING of the kernel clone, at $GITHUB_WORKSPACE/vendor, not inside kernel/.
-  # The stock Oppo/MTK build lays the kernel and vendor repos out as siblings this way.
+  # Vendor modules repo (same branch). Its top-level is vendor/. The kernel tree has
+  # ~89 git symlinks (mode 120000) into the vendor modules, in TWO target classes
+  # (verified by resolving the real targets and by a CI dangling-link scan):
+  #   * ../../vendor/oplus/...        -> resolves to <parent-of-kernel-root>/vendor
+  #   * ../../../../vnd/vendor/oplus/ -> resolves to <grandparent-of-kernel-root>/vnd/vendor
+  # Both want the SAME content (this modules repo's vendor/); there is no separate "vnd"
+  # repo. To make both land inside the workspace we nest the kernel at src/kernel, so:
+  #   ../vendor -> $GITHUB_WORKSPACE/src/vendor  and  vnd/vendor -> $GITHUB_WORKSPACE/vnd/vendor
+  # and point both at the one real modules/vendor via symlinks.
   MODULES_REPO: https://github.com/oppo-source/android_kernel_modules_oppo_mt6765
   DEFCONFIG: k65v1_64_bsp_defconfig
   CLANG_URL: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r48/clang-r383902b.tar.gz
@@ -59,26 +62,33 @@ jobs:
           echo "CLANG_BIN=$PWD/toolchain/clang/bin" >> "$GITHUB_ENV"
           "$PWD/toolchain/clang/bin/clang" --version | head -1 || true
 
-      - name: Clone kernel source (shallow)
-        run: git clone --depth 1 -b "$KERNEL_BRANCH" "$KERNEL_REPO" kernel
+      - name: Clone kernel source (shallow, nested at src/kernel)
+        run: |
+          mkdir -p src vnd
+          git clone --depth 1 -b "$KERNEL_BRANCH" "$KERNEL_REPO" src/kernel
 
       - name: Overlay vendor modules (resolve the oplus symlinks)
         run: |
           git clone --depth 1 -b "$KERNEL_BRANCH" "$MODULES_REPO" modules
-          # modules repo top-level is vendor/{mediatek,oplus}. Place it as a SIBLING of
-          # kernel/ (at $GITHUB_WORKSPACE/vendor) because the kernel's oplus symlinks
-          # resolve one level above the kernel tree root.
-          cp -a modules/vendor ./vendor
-          # Verify loudly: follow the exact link that failed before. If it still
-          # dangles, fail here rather than deep in kconfig.
-          echo "sched_assist link:"; ls -l kernel/kernel/sched_assist || true
-          echo "resolves to:"; readlink -f kernel/kernel/sched_assist || true
-          test -f kernel/kernel/sched_assist/Kconfig || { echo "::error::sched_assist symlink still dangling after overlay"; exit 1; }
-          dangling=$(find kernel -xtype l 2>/dev/null); if [ -n "$dangling" ]; then echo "::warning::dangling symlinks remain:"; echo "$dangling" | head -80; else echo "no dangling symlinks under kernel/"; fi
+          # One real copy of the vendor modules, reached from both symlink classes.
+          ln -s "$GITHUB_WORKSPACE/modules/vendor" src/vendor
+          ln -s "$GITHUB_WORKSPACE/modules/vendor" vnd/vendor
+          # General guard: fail loudly on any TRULY dangling symlink before the long build.
+          # Normal in-tree links (Documentation, arch dts, dt-bindings) resolve fine now the
+          # tree is intact; this only trips on broken targets.
+          cd src/kernel
+          echo "sample oplus links:"; ls -l kernel/sched_assist drivers/base/kernelFwUpdate || true
+          miss=0
+          while IFS= read -r l; do
+            t=$(readlink -f "$l" 2>/dev/null || true)
+            if [ -z "$t" ] || [ ! -e "$t" ]; then echo "DANGLING: $l -> $(readlink "$l")"; miss=1; fi
+          done < <(find . -type l)
+          [ "$miss" -eq 0 ] || { echo "::error::dangling symlinks remain; vendor overlay layout is wrong"; exit 1; }
+          echo "all symlinks resolve"
 
       - name: Add KernelSU-Next (kprobe hooks; CONFIG_KPROBES=y in defconfig)
         if: ${{ github.event.inputs.ksu != 'false' }}
-        working-directory: kernel
+        working-directory: src/kernel
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           echo "KSU version: $(cd KernelSU-Next 2>/dev/null && git describe --tags 2>/dev/null || echo n/a)"
@@ -87,10 +97,10 @@ jobs:
         if: ${{ github.event.inputs.susfs == 'true' }}
         run: |
           git clone --depth 1 -b "$SUSFS_BRANCH" "$SUSFS_REPO" susfs
-          cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch kernel/ || true
-          cp -r susfs/kernel_patches/fs/* kernel/fs/ || true
-          cp -r susfs/kernel_patches/include/linux/* kernel/include/linux/ || true
-          cd kernel
+          cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch src/kernel/ || true
+          cp -r susfs/kernel_patches/fs/* src/kernel/fs/ || true
+          cp -r susfs/kernel_patches/include/linux/* src/kernel/include/linux/ || true
+          cd src/kernel
           # KernelSU-side SUSFS enable patch (path/name may differ on KSU-Next; non-fatal)
           if [ -f ../susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ] && [ -d KernelSU-Next ]; then
             cp ../susfs/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch KernelSU-Next/ || true
@@ -104,13 +114,13 @@ jobs:
         run: |
           if [ "${{ github.event.inputs.susfs }}" != "true" ]; then
             echo "SUSFS off -> KSU-only config"
-            cat config/ksu_only.config >> kernel/arch/arm64/configs/$DEFCONFIG
+            cat config/ksu_only.config >> src/kernel/arch/arm64/configs/$DEFCONFIG
           else
-            cat config/ksu_susfs.config >> kernel/arch/arm64/configs/$DEFCONFIG
+            cat config/ksu_susfs.config >> src/kernel/arch/arm64/configs/$DEFCONFIG
           fi
 
       - name: Build
-        working-directory: kernel
+        working-directory: src/kernel
         run: |
           export PATH="$CLANG_BIN:$PATH"
           MAKE_ARGS="O=out ARCH=arm64 CC=clang \
@@ -131,7 +141,7 @@ jobs:
           cp anykernel/anykernel.sh ak3/anykernel.sh
           IMG=""
           for c in Image.gz-dtb Image-dtb Image.gz Image; do
-            [ -f "kernel/out/arch/arm64/boot/$c" ] && IMG="kernel/out/arch/arm64/boot/$c" && break
+            [ -f "src/kernel/out/arch/arm64/boot/$c" ] && IMG="src/kernel/out/arch/arm64/boot/$c" && break
           done
           if [ -z "$IMG" ]; then echo "::error::no kernel image produced — build failed"; exit 1; fi
           cp "$IMG" "ak3/$(basename "$IMG")"
@@ -145,7 +155,7 @@ jobs:
           name: kernel-build
           path: |
             AnyKernel3-*.zip
-            kernel/out/arch/arm64/boot/Image*
+            src/kernel/out/arch/arm64/boot/Image*
             build.log
-            kernel/**/*.rej
+            src/kernel/**/*.rej
           if-no-files-found: warn
