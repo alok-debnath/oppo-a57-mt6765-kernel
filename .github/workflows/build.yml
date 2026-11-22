@@ -22,6 +22,11 @@ on:
 env:
   KERNEL_REPO: https://github.com/oppo-source/android_kernel_oppo_mt6765
   KERNEL_BRANCH: oppo/mt6765_t_13.1_oppo_a57_a57s_a77
+  # Vendor modules repo (same branch). Its top-level is vendor/. The kernel tree
+  # has ~89 symlinks (git mode 120000) like kernel/sched_assist -> ../../vendor/oplus/...
+  # whose targets resolve to <kernel>/vendor/oplus/..., so vendor/ must sit at the
+  # kernel repo root. The stock build overlays both repos; we reproduce that here.
+  MODULES_REPO: https://github.com/oppo-source/android_kernel_modules_oppo_mt6765
   DEFCONFIG: k65v1_64_bsp_defconfig
   CLANG_URL: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r48/clang-r383902b.tar.gz
   SUSFS_REPO: https://gitlab.com/simonpunk/susfs4ksu.git
@@ -54,6 +59,17 @@ jobs:
 
       - name: Clone kernel source (shallow)
         run: git clone --depth 1 -b "$KERNEL_BRANCH" "$KERNEL_REPO" kernel
+
+      - name: Overlay vendor modules (resolve the oplus symlinks)
+        run: |
+          git clone --depth 1 -b "$KERNEL_BRANCH" "$MODULES_REPO" modules
+          # modules repo top-level is vendor/{mediatek,oplus}; place it at the kernel root
+          # so links like kernel/sched_assist -> ../../vendor/oplus/... resolve.
+          cp -a modules/vendor kernel/vendor
+          # sanity: the first Kconfig that previously failed must now exist
+          test -f kernel/vendor/oplus/kernel/oplus_performance/sched_assist/Kconfig
+          echo "dangling symlinks after overlay:"
+          find kernel -xtype l 2>/dev/null | head -50 || true
 
       - name: Add KernelSU-Next (kprobe hooks; CONFIG_KPROBES=y in defconfig)
         if: ${{ github.event.inputs.ksu != 'false' }}
