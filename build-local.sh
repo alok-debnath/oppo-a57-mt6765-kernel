@@ -35,8 +35,14 @@ mkdir -p src vnd
 [ -d modules ] || git clone --depth 1 -b "$KERNEL_BRANCH" "$MODULES_REPO" modules
 [ -e src/vendor ] || ln -s "$HERE/modules/vendor" src/vendor
 [ -e vnd/vendor ] || ln -s "$HERE/modules/vendor" vnd/vendor
+# Oppo vendor drivers hardcode relative includes into a kernel dir named "kernel-4.19"
+# (the stock build root). The quoted include resolves physically through the oplus
+# symlink, landing inside modules/vendor, so alias kernel-4.19 -> the kernel root at the
+# levels those climbs can land on.
+for d in "$HERE" "$HERE/modules" "$HERE/modules/vendor"; do ln -sfn "$HERE/src/kernel" "$d/kernel-4.19"; done
 test -f src/kernel/kernel/sched_assist/Kconfig
 test -f src/kernel/drivers/base/kernelFwUpdate/Kconfig
+test -f src/kernel/drivers/power/oplus/v1/adapter_ic/../charger_ic/../../../../../kernel-4.19/drivers/power/supply/charger_class.h
 
 # KSU-Next `legacy` branch supports non-GKI 4.19 (dev targets modern GKI 5.10+).
 [ -d src/kernel/KernelSU-Next ] || ( cd src/kernel && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy )

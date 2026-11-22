@@ -73,6 +73,15 @@ jobs:
           # One real copy of the vendor modules, reached from both symlink classes.
           ln -s "$GITHUB_WORKSPACE/modules/vendor" src/vendor
           ln -s "$GITHUB_WORKSPACE/modules/vendor" vnd/vendor
+          # Oppo vendor drivers (e.g. the oplus charger code) carry hardcoded relative
+          # includes like "../../../../../kernel-4.19/drivers/power/supply/charger_class.h":
+          # the stock build root had the kernel checkout named "kernel-4.19". The quoted
+          # include is resolved physically (open() follows the drivers/power/oplus symlink
+          # first, then climbs ..), so the climb lands inside modules/vendor. Alias
+          # "kernel-4.19" -> the kernel root at the levels those climbs can land on.
+          for d in "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/modules" "$GITHUB_WORKSPACE/modules/vendor"; do
+            ln -sfn "$GITHUB_WORKSPACE/src/kernel" "$d/kernel-4.19"
+          done
           # General guard: fail loudly on any TRULY dangling symlink before the long build.
           # Normal in-tree links (Documentation, arch dts, dt-bindings) resolve fine now the
           # tree is intact; this only trips on broken targets.

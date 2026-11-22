@@ -5,6 +5,7 @@ modules/
 vendor/
 src/
 vnd/
+kernel-4.19
 susfs/
 ak3/
 *.tar.gz
