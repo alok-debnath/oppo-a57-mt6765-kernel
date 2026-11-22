@@ -93,6 +93,21 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           echo "KSU version: $(cd KernelSU-Next 2>/dev/null && git describe --tags 2>/dev/null || echo n/a)"
 
+      - name: Patch KernelSU-Next for Linux 4.19 (pgtable.h moved in 5.8)
+        if: ${{ github.event.inputs.ksu != 'false' }}
+        working-directory: src/kernel
+        run: |
+          # <linux/pgtable.h> exists only on kernels >= 5.8; on 4.19 those defs live in
+          # <asm/pgtable.h>. KSU-Next's `next` branch includes it unconditionally, so guard
+          # every occurrence by kernel version to build on this non-GKI 4.19 tree.
+          patched=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            perl -0pi -e 's{\#include <linux/pgtable\.h>}{#include <linux/version.h>\n#if LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0)\n#include <asm/pgtable.h>\n#else\n#include <linux/pgtable.h>\n#endif}g' "$f"
+            echo "guarded pgtable.h in: $f"; patched=$((patched+1))
+          done < <(grep -rl '#include <linux/pgtable.h>' drivers/kernelsu 2>/dev/null || true)
+          echo "files patched: $patched"
+
       - name: Apply SUSFS patches (best-effort on non-GKI 4.19)
         if: ${{ github.event.inputs.susfs == 'true' }}
         run: |
