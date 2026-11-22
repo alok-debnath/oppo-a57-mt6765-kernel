@@ -78,6 +78,15 @@ Wrong turns that cost runs: putting `vendor/` at the kernel repo root
   helpers for `< 5.8`). So `legacy` builds on 4.19 without patching KSU source.
 - Hooks via **kprobes**: `CONFIG_KPROBES=y` is already in the stock defconfig and arm64
   selects HAVE_KPROBES/HAVE_KRETPROBES.
+- **Pinned to the tag `v3.4.0-legacy`, not the `legacy` branch HEAD** (manager match).
+  KSU-Next computes `KSU_VERSION = 30000 + git_commit_count + 289` in its Kbuild. The
+  `legacy` branch HEAD has a higher commit count than the latest published manager
+  (v3.4.2, build 33355), so the on-device manager reported "manager version too low"
+  (kernel newer than any installable manager). `v3.4.0-legacy` is the newest legacy tag;
+  its commit count is 3005 → `KSU_VERSION = 33294`, which is `<= 33355`, so manager
+  v3.4.2 matches with no warning. (There is no `v3.4.1/2-legacy` tag; the legacy line
+  tops out at v3.4.0-legacy.) `setup.sh` full-clones the repo so the commit count — and
+  thus the version — is accurate; a shallow clone would wrongly report count 1.
 
 ## Errors encountered
 

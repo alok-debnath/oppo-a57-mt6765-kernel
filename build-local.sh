@@ -44,8 +44,9 @@ test -f src/kernel/kernel/sched_assist/Kconfig
 test -f src/kernel/drivers/base/kernelFwUpdate/Kconfig
 test -f src/kernel/drivers/power/oplus/v1/adapter_ic/../charger_ic/../../../../../kernel-4.19/drivers/power/supply/charger_class.h
 
-# KSU-Next `legacy` branch supports non-GKI 4.19 (dev targets modern GKI 5.10+).
-[ -d src/kernel/KernelSU-Next ] || ( cd src/kernel && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy )
+# KSU-Next pinned to v3.4.0-legacy: non-GKI 4.19 support AND KSU_VERSION 33294
+# (30000 + 3005 commits + 289) <= manager v3.4.2 build 33355, so the manager matches.
+[ -d src/kernel/KernelSU-Next ] || ( cd src/kernel && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s v3.4.0-legacy )
 
 if [ "$SUSFS" = "true" ]; then
   [ -d susfs ] || git clone --depth 1 -b "$SUSFS_BRANCH" "$SUSFS_REPO" susfs

@@ -95,18 +95,21 @@ jobs:
           [ "$miss" -eq 0 ] || { echo "::error::dangling symlinks remain; vendor overlay layout is wrong"; exit 1; }
           echo "all symlinks resolve"
 
-      - name: Add KernelSU-Next (legacy branch — supports non-GKI 4.19; kprobe hooks)
+      - name: Add KernelSU-Next (pinned v3.4.0-legacy — non-GKI 4.19; kprobe hooks)
         if: ${{ github.event.inputs.ksu != 'false' }}
         working-directory: src/kernel
         run: |
-          # Use the `legacy` branch, not the default `dev`. dev targets modern GKI
-          # (5.10+) with an LSM/tracepoint hook model and unguarded 5.8/5.9 APIs
-          # (pgtable.h, path_umount, *_nofault). legacy keeps the classic hook model and
-          # version-guards those APIs (kernel_compat.c, patch_memory.c), so it builds on
-          # this 4.19 tree without hand-patching. setup.sh clones the repo and checks out
-          # the ref we pass.
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s legacy
-          echo "KSU ref: $(cd KernelSU-Next 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null; git -C KernelSU-Next describe --tags 2>/dev/null || echo n/a)"
+          # Pin to the TAGGED legacy release v3.4.0-legacy, not the `legacy` branch HEAD.
+          # The KSU module version is KSU_VERSION = 30000 + git_commit_count + 289
+          # (KernelSU-Next Kbuild). legacy HEAD's count put the kernel AHEAD of the latest
+          # published manager (v3.4.2 = build 33355), so the on-device manager warned
+          # "manager version too low". v3.4.0-legacy has commit count 3005 -> KSU_VERSION
+          # 33294 (<= 33355), so manager v3.4.2 matches with no warning. The legacy line
+          # keeps the classic hook model and version-guards the 5.8/5.9 APIs, so it builds
+          # on this 4.19 tree with no source patching. setup.sh full-clones the repo (so
+          # the commit count is accurate) and checks out the ref we pass.
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/legacy/kernel/setup.sh" | bash -s v3.4.0-legacy
+          echo "KSU ref: $(git -C KernelSU-Next describe --tags 2>/dev/null || echo n/a)  commits=$(git -C KernelSU-Next rev-list --count HEAD 2>/dev/null)"
 
       - name: Apply SUSFS patches (best-effort on non-GKI 4.19)
         if: ${{ github.event.inputs.susfs == 'true' }}
