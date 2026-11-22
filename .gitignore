@@ -1,0 +1,8 @@
+.DS_Store
+clang/
+kernel/
+susfs/
+ak3/
+*.tar.gz
+*.zip
+out/
