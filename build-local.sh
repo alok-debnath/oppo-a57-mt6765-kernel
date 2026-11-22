@@ -27,12 +27,14 @@ fi
 
 [ -d kernel ] || git clone --depth 1 -b "$KERNEL_BRANCH" "$KERNEL_REPO" kernel
 
-# Overlay vendor modules at the kernel root so the ~89 oplus symlinks resolve.
-if [ ! -d kernel/vendor ]; then
+# Overlay vendor modules as a SIBLING of kernel/ so the ~89 oplus symlinks resolve.
+# The links (e.g. kernel/sched_assist -> ../../vendor/oplus/...) resolve one level
+# above the kernel tree root, i.e. to "$HERE/vendor".
+if [ ! -d vendor ]; then
   [ -d modules ] || git clone --depth 1 -b "$KERNEL_BRANCH" "$MODULES_REPO" modules
-  cp -a modules/vendor kernel/vendor
+  cp -a modules/vendor ./vendor
 fi
-test -f kernel/vendor/oplus/kernel/oplus_performance/sched_assist/Kconfig
+test -f kernel/kernel/sched_assist/Kconfig
 
 [ -d kernel/KernelSU-Next ] || ( cd kernel && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next )
 

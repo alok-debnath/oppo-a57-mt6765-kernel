@@ -1,6 +1,8 @@
 .DS_Store
 clang/
 kernel/
+modules/
+vendor/
 susfs/
 ak3/
 *.tar.gz

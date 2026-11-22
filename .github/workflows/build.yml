@@ -24,8 +24,10 @@ env:
   KERNEL_BRANCH: oppo/mt6765_t_13.1_oppo_a57_a57s_a77
   # Vendor modules repo (same branch). Its top-level is vendor/. The kernel tree
   # has ~89 symlinks (git mode 120000) like kernel/sched_assist -> ../../vendor/oplus/...
-  # whose targets resolve to <kernel>/vendor/oplus/..., so vendor/ must sit at the
-  # kernel repo root. The stock build overlays both repos; we reproduce that here.
+  # The link kernel/<tree>/kernel/sched_assist with target ../../vendor/... resolves ONE
+  # level ABOVE the kernel tree root (every link uses depth+1 '..'), so vendor/ must sit
+  # as a SIBLING of the kernel clone, at $GITHUB_WORKSPACE/vendor, not inside kernel/.
+  # The stock Oppo/MTK build lays the kernel and vendor repos out as siblings this way.
   MODULES_REPO: https://github.com/oppo-source/android_kernel_modules_oppo_mt6765
   DEFCONFIG: k65v1_64_bsp_defconfig
   CLANG_URL: https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/tags/android-11.0.0_r48/clang-r383902b.tar.gz
@@ -63,13 +65,16 @@ jobs:
       - name: Overlay vendor modules (resolve the oplus symlinks)
         run: |
           git clone --depth 1 -b "$KERNEL_BRANCH" "$MODULES_REPO" modules
-          # modules repo top-level is vendor/{mediatek,oplus}; place it at the kernel root
-          # so links like kernel/sched_assist -> ../../vendor/oplus/... resolve.
-          cp -a modules/vendor kernel/vendor
-          # sanity: the first Kconfig that previously failed must now exist
-          test -f kernel/vendor/oplus/kernel/oplus_performance/sched_assist/Kconfig
-          echo "dangling symlinks after overlay:"
-          find kernel -xtype l 2>/dev/null | head -50 || true
+          # modules repo top-level is vendor/{mediatek,oplus}. Place it as a SIBLING of
+          # kernel/ (at $GITHUB_WORKSPACE/vendor) because the kernel's oplus symlinks
+          # resolve one level above the kernel tree root.
+          cp -a modules/vendor ./vendor
+          # Verify loudly: follow the exact link that failed before. If it still
+          # dangles, fail here rather than deep in kconfig.
+          echo "sched_assist link:"; ls -l kernel/kernel/sched_assist || true
+          echo "resolves to:"; readlink -f kernel/kernel/sched_assist || true
+          test -f kernel/kernel/sched_assist/Kconfig || { echo "::error::sched_assist symlink still dangling after overlay"; exit 1; }
+          dangling=$(find kernel -xtype l 2>/dev/null); if [ -n "$dangling" ]; then echo "::warning::dangling symlinks remain:"; echo "$dangling" | head -80; else echo "no dangling symlinks under kernel/"; fi
 
       - name: Add KernelSU-Next (kprobe hooks; CONFIG_KPROBES=y in defconfig)
         if: ${{ github.event.inputs.ksu != 'false' }}
