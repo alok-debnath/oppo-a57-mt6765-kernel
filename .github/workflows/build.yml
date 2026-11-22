@@ -10,7 +10,7 @@ on:
       susfs:
         description: "Add SUSFS patches (best-effort on 4.19)"
         type: boolean
-        default: true
+        default: false
   push:
     paths:
       - ".github/workflows/build.yml"
@@ -63,7 +63,7 @@ jobs:
           echo "KSU version: $(cd KernelSU-Next 2>/dev/null && git describe --tags 2>/dev/null || echo n/a)"
 
       - name: Apply SUSFS patches (best-effort on non-GKI 4.19)
-        if: ${{ github.event.inputs.susfs != 'false' }}
+        if: ${{ github.event.inputs.susfs == 'true' }}
         run: |
           git clone --depth 1 -b "$SUSFS_BRANCH" "$SUSFS_REPO" susfs
           cp susfs/kernel_patches/50_add_susfs_in_kernel-4.19.patch kernel/ || true
@@ -81,7 +81,7 @@ jobs:
 
       - name: Merge config fragment into defconfig
         run: |
-          if [ "${{ github.event.inputs.susfs }}" = "false" ]; then
+          if [ "${{ github.event.inputs.susfs }}" != "true" ]; then
             echo "SUSFS off -> KSU-only config"
             cat config/ksu_only.config >> kernel/arch/arm64/configs/$DEFCONFIG
           else
