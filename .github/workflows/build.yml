@@ -148,6 +148,13 @@ jobs:
             LD=aarch64-linux-gnu-ld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip \
             LLVM_IAS=0"
           make $MAKE_ARGS "$DEFCONFIG"
+          # Module-signature enforcement MUST be off so stock-signed vendor .ko load
+          # (WiFi/BT/GPS/FM). Fail loudly here rather than ship a kernel that can't load them.
+          echo "--- module sig in built .config:"; grep -E "CONFIG_MODULE_SIG(_FORCE|_ALL|_KEY)?[ =]" out/.config || true
+          if grep -q "^CONFIG_MODULE_SIG_FORCE=y" out/.config; then
+            echo "::error::CONFIG_MODULE_SIG_FORCE is still =y; stock vendor modules would be rejected"; exit 1
+          fi
+          echo "MODULE_SIG_FORCE is off (good)"
           set -o pipefail
           make -j"$(nproc)" $MAKE_ARGS 2>&1 | tee "$GITHUB_WORKSPACE/build.log"; rc=${PIPESTATUS[0]}
           echo "--- outputs:"; ls -l out/arch/arm64/boot/ || true
