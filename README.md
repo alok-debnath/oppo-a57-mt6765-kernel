@@ -1,3 +1,18 @@
+> [!CAUTION]
+> **Archived / does not work on CPH2387. Do not flash the output of this repo.**
+> A kernel built from source has different `CONFIG_MODVERSIONS` symbol CRCs than the
+> stock kernel, so the stock vendor modules (`wlan_drv_gen4m`, `wmt_drv`,
+> `bt_drv_connac1x`, `gps_drv`, `fmradio_drv_mt6631`, `connfem`) are rejected at load
+> with `disagrees about version of symbol module_layout` — meaning **no WiFi, Bluetooth,
+> GPS, or FM** after flashing. Disabling `CONFIG_MODULE_SIG_FORCE` is necessary but not
+> sufficient (signature and modversions are separate checks).
+>
+> The working root path on this device is **APatch-on-stock**, which patches the stock
+> kernel in place so the stock CRCs are preserved and the vendor modules keep loading.
+> See the guide repo: https://github.com/alok-debnath/oppo-a57-cph2387-guide
+>
+> This repo is kept, read-only, only as a record of that dead-end and why it fails.
+
 # Oppo A57 4G (CPH2387 / MT6765) — custom kernel
 
 Builds a **KernelSU-Next + SUSFS** kernel for the Oppo A57 4G (CPH2387, device `OP5355`,
